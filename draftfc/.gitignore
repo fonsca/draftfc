@@ -1,0 +1,66 @@
+# ==========================================
+# Ambientes Virtuais e Cache do Python
+# ==========================================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.installed.cfg
+*.egg
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ==========================================
+# Frontend (Node.js / Vite / React)
+# ==========================================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# Dados Temporários, Scraper e RDBM Dumps
+# ==========================================
+# Perfil de sessão do navegador usado para contornar o Cloudflare
+data/.sofifa_browser/
+data/raw/
+
+# Backups binários pesados do EA FC e tabelas brutas do RDBM
+data/backup_squads/
+data/rdbm_clean/*.txt
+data/exports/
+
+# NOTA: O arquivo data/draftfc_local.db NÃO está ignorado abaixo para que
+# você possa subir o banco de jogadores pronto para o campeonato no GitHub.
+# Caso queira ignorá-lo no futuro, descomente a linha abaixo:
+# data/draftfc_local.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# ==========================================
+# Variáveis de Ambiente e Sistema / IDEs
+# ==========================================
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
