@@ -18,6 +18,15 @@ from backend.exporter.rdbm_patcher import (
 )
 from backend.exporter.router import router as export_router
 
+import struct
+import zlib
+from backend.exporter.squads_binary_patcher import (
+    SquadsBinaryPatcher,
+    read_bits_le,
+    write_bits_le,
+)
+
+
 
 def _write_utf16_tsv(path: Path, headers: list[str], rows: list[list[str]]) -> bytes:
     lines = ["\t".join(headers)] + ["\t".join(r) for r in rows]
@@ -171,3 +180,13 @@ def test_export_api_endpoints(tmp_path: Path) -> None:
     )
     assert res.status_code == 200
     assert res.json()["players_transferred"] == 11
+
+def test_binary_bitpacking_and_in_place_squads_patch(tmp_path: Path) -> None:
+    # 1. Valida leitura e escrita em bitfields compactados (Little-Endian)
+    buf = bytearray(16)
+    write_bits_le(buf, bit_offset=0, bit_depth=19, value=231747)
+    write_bits_le(buf, bit_offset=19, bit_depth=18, value=305)
+    write_bits_le(buf, bit_offset=37, bit_depth=7, value=9)
+    assert read_bits_le(buf, 0, 19) == 231747
+    assert read_bits_le(buf, 19, 18) == 305
+    assert read_bits_le(buf, 37, 7) == 9

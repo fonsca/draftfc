@@ -154,6 +154,13 @@ export function App() {
   const [inspectedSeat, setInspectedSeat] = useState<number>(1);
   const [banner, setBanner] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
+  
+  // Estados do Modal de Injeção Direta no EA FC
+  const [showInjectModal, setShowInjectModal] = useState<boolean>(false);
+  const [squadsFiles, setSquadsFiles] = useState<Array<{ name: string; path: string; modified_at: string }>>([]);
+  const [selectedSquadsPath, setSelectedSquadsPath] = useState<string>("");
+  const [seatClubMap, setSeatClubMap] = useState<Record<number, number>>({});
+  const [injectBusy, setInjectBusy] = useState<boolean>(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -448,6 +455,64 @@ export function App() {
       showToast("success", "O Draft começou!");
     } catch (err: any) {
       showToast("error", err.message);
+    }
+  };
+
+  const openInjectModal = async () => {
+    setShowInjectModal(true);
+    try {
+      const resp = await fetch("/api/multiplayer/squads-files");
+      if (resp.ok) {
+        const data = await resp.json();
+        const files = data.files || [];
+        setSquadsFiles(files);
+        if (files.length > 0 && !selectedSquadsPath) {
+          setSelectedSquadsPath(files[0].path);
+        }
+        const defaults = [305, 306, 422, 563, 837, 1572, 243, 241, 10, 9, 1, 21, 73, 44, 45, 47];
+        if (roomState && Object.keys(seatClubMap).length === 0) {
+          const initialMap: Record<number, number> = {};
+          roomState.participants.forEach((p, idx) => {
+            initialMap[p.seat_number] = defaults[idx % defaults.length];
+          });
+          setSeatClubMap(initialMap);
+        }
+      }
+    } catch {
+      showToast("error", "Erro ao buscar arquivos Squads locais.");
+    }
+  };
+
+  const handleInjectSquads = async () => {
+    if (!roomState) return;
+    setInjectBusy(true);
+    try {
+      const mappings = Object.entries(seatClubMap).map(([seat, clubId]) => ({
+        seat_number: Number(seat),
+        host_team_id: Number(clubId),
+      }));
+      const resp = await fetch(`/api/multiplayer/rooms/${roomState.room_code}/inject-squads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          commissioner_token: commToken,
+          squads_path: selectedSquadsPath,
+          seat_mappings: mappings,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.detail || "Falha ao injetar no arquivo Squads.");
+      }
+      showToast(
+        "success",
+        `Injeção concluída! ${data.players_transferred} atletas gravados em ${data.squads_file} (Backup salvo).`
+      );
+      setShowInjectModal(false);
+    } catch (err: any) {
+      showToast("error", err.message || "Erro ao injetar Squads.");
+    } finally {
+      setInjectBusy(false);
     }
   };
 
@@ -963,11 +1028,93 @@ export function App() {
             </button>
           )}
 
+          {commToken && (
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={openInjectModal}
+              title="Injeta os elencos diretamente no arquivo Squads do EA FC sem abrir o RDBM"
+            >
+              🚀 Injetar no EA FC
+            </button>
+          )}
+
           <button className="btn btn-sm btn-secondary" onClick={leaveRoom}>
             Voltar ao Lobby
           </button>
         </div>
       </header>
+
+      {showInjectModal && (
+        <div className="draft-shell" style={{ paddingBottom: 0 }}>
+          <section className="glass-panel" style={{ border: "1px solid var(--accent-neon)" }}>
+            <div className="panel-header">
+              <div className="panel-title">🚀 Injeção Direta no Arquivo Squads (Sem RDBM)</div>
+              <button className="btn btn-sm btn-secondary" onClick={() => setShowInjectModal(false)}>
+                Fechar ✕
+              </button>
+            </div>
+
+            <div className="form-group">
+              <label>Arquivo Squads do EA Sports FC (Caminho Local no Windows)</label>
+              {squadsFiles.length > 0 ? (
+                <select
+                  className="input-field"
+                  value={selectedSquadsPath}
+                  onChange={(e) => setSelectedSquadsPath(e.target.value)}
+                >
+                  {squadsFiles.map((f) => (
+                    <option key={f.path} value={f.path}>
+                      {f.name} — ({f.path}) — Modificado: {f.modified_at}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="input-field"
+                  placeholder="Ex: C:\Users\mateus.cezar\AppData\Local\EA SPORTS FC 26\settings\Squads2026..."
+                  value={selectedSquadsPath}
+                  onChange={(e) => setSelectedSquadsPath(e.target.value)}
+                />
+              )}
+            </div>
+
+            <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: 10 }}>
+              Defina o ID do clube no EA FC que receberá o elenco de cada participante (Ex: 305 = Bohemians, 306 = Shamrock Rovers, 243 = Real Madrid):
+            </div>
+
+            <div className="form-grid" style={{ marginBottom: 14 }}>
+              {roomState.participants.map((pt) => (
+                <div key={pt.seat_number} className="form-group" style={{ marginBottom: 4 }}>
+                  <label>
+                    #{pt.seat_number} {pt.display_name} ({pt.roster.length} atletas)
+                  </label>
+                  <input
+                    className="input-field"
+                    type="number"
+                    value={seatClubMap[pt.seat_number] || 305}
+                    onChange={(e) =>
+                      setSeatClubMap((prev) => ({
+                        ...prev,
+                        [pt.seat_number]: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+
+            <button
+              className="btn btn-primary"
+              onClick={handleInjectSquads}
+              disabled={injectBusy || !selectedSquadsPath}
+            >
+              {injectBusy
+                ? "Gravando Binário Squads e Calculando Checksum..."
+                : "⚡ Aplicar Transferências Direto no Arquivo Squads"}
+            </button>
+          </section>
+        </div>
+      )}
 
       <main className="draft-shell">
         {banner && (
@@ -1578,6 +1725,7 @@ export function App() {
         </section>
       </main>
     </div>
+    
   );
 }
 

@@ -5,6 +5,17 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from backend.multiplayer.models import CreateRoomRequest, JoinRoomRequest, PickActionRequest
 from backend.multiplayer.room_manager import room_manager
 
+from pathlib import Path
+from pydantic import BaseModel
+
+from backend.exporter.squads_binary_patcher import (
+    DraftExportPlayer,
+    DraftExportRequest,
+    DraftExportTeam,
+    SquadsBinaryPatcher,
+    discover_local_squads_files,
+)
+
 router = APIRouter(tags=["multiplayer"])
 
 
@@ -336,3 +347,122 @@ async def toggle_pause_multiplayer_room(
     if not ok:
         raise HTTPException(status_code=400, detail=payload.get("message", "Erro ao pausar/retomar."))
     return payload
+
+class SeatClubMapping(BaseModel):
+    seat_number: int
+    host_team_id: int
+
+
+class InjectRoomSquadsRequest(BaseModel):
+    commissioner_token: str = ""
+    squads_path: str | None = None
+    seat_mappings: list[SeatClubMapping] = []
+
+
+@router.get("/api/multiplayer/squads-files")
+async def list_local_ea_fc_squads_files() -> dict:
+    files = discover_local_squads_files()
+    # Clubes padrão sugeridos (Irlanda / Resto do Mundo / Grandes) para facilitar a escolha na tela
+    default_host_clubs = [
+        {"club_id": 305, "club_name": "Bohemians (Irlanda - 305)"},
+        {"club_id": 306, "club_name": "Shamrock Rovers (Irlanda - 306)"},
+        {"club_id": 422, "club_name": "Derry City (Irlanda - 422)"},
+        {"club_id": 563, "club_name": "Sligo Rovers (Irlanda - 563)"},
+        {"club_id": 837, "club_name": "St. Patrick's (Irlanda - 837)"},
+        {"club_id": 1572, "club_name": "Drogheda United (Irlanda - 1572)"},
+        {"club_id": 243, "club_name": "Real Madrid (243)"},
+        {"club_id": 241, "club_name": "FC Barcelona (241)"},
+        {"club_id": 10, "club_name": "Manchester City (10)"},
+        {"club_id": 9, "club_name": "Liverpool (9)"},
+        {"club_id": 1, "club_name": "Arsenal (1)"},
+        {"club_id": 21, "club_name": "FC Bayern München (21)"},
+        {"club_id": 73, "club_name": "Paris Saint-Germain (73)"},
+        {"club_id": 44, "club_name": "Inter (44)"},
+        {"club_id": 45, "club_name": "Juventus (45)"},
+        {"club_id": 47, "club_name": "AC Milan (47)"},
+    ]
+    return {
+        "files": files,
+        "default_host_clubs": default_host_clubs,
+        "rdbm_clean_ready": Path("data/rdbm_clean/teamplayerlinks.txt").exists(),
+    }
+
+
+@router.post("/api/multiplayer/rooms/{room_code}/inject-squads")
+async def inject_multiplayer_room_into_squads(
+    room_code: str,
+    req: InjectRoomSquadsRequest,
+) -> dict:
+    try:
+        room = room_manager.get_room(room_code)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if req.commissioner_token and not room._is_commissioner(req.commissioner_token):
+        raise HTTPException(status_code=403, detail="Apenas o Comissário pode injetar os elencos.")
+
+    # Determina o arquivo Squads alvo
+    target_path: Path | None = None
+    if req.squads_path:
+        target_path = Path(req.squads_path)
+    else:
+        detected = discover_local_squads_files()
+        if detected:
+            target_path = Path(detected[0]["path"])
+
+    if target_path is None or not target_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum arquivo Squads encontrado automaticamente. Informe o caminho completo do arquivo Squads.",
+        )
+
+    # Mapeamento Seat -> Host Club ID
+    default_club_ids = [305, 306, 422, 563, 837, 1572, 243, 241, 10, 9, 1, 21, 73, 44, 45, 47]
+    mapping_dict = {m.seat_number: m.host_team_id for m in req.seat_mappings}
+
+    export_teams: list[DraftExportTeam] = []
+    for idx, seat_num in enumerate(sorted(room.participants.keys())):
+        pt = room.participants[seat_num]
+        if not pt.roster:
+            continue
+        host_id = mapping_dict.get(
+            seat_num,
+            default_club_ids[idx % len(default_club_ids)],
+        )
+        export_teams.append(
+            DraftExportTeam(
+                participant_id=seat_num,
+                participant_name=pt.display_name,
+                host_team_id=host_id,
+                players=[
+                    DraftExportPlayer(
+                        player_id=p.player_id,
+                        short_name=p.short_name,
+                        primary_position=p.primary_position,
+                        overall=p.overall,
+                    )
+                    for p in pt.roster
+                ],
+            )
+        )
+
+    if not export_teams:
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum jogador foi escolhido na sala ainda para exportar.",
+        )
+
+    export_request = DraftExportRequest(
+        edition=room.config.edition,
+        teams=export_teams,
+    )
+
+    patcher = SquadsBinaryPatcher()
+    try:
+        result = patcher.patch_squads_binary_file(
+            squads_path=target_path,
+            request=export_request,
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Erro ao injetar no arquivo Squads: {exc}") from exc
