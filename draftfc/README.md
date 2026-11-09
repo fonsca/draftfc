@@ -1,4 +1,4 @@
-# ⚽ DraftFC — Plataforma de Fantasy Draft Multiplayer (EA Sports FC 26 / 27)
+# DraftFC — Plataforma de Fantasy Draft Multiplayer (EA Sports FC 26 / 27)
 
 O **DraftFC** é uma plataforma completa de *Fantasy Draft* em formato **Snake Draft** (inspirada no *Sleeper*) desenvolvida para campeonatos presenciais e online de **EA Sports FC 26 e EA Sports FC 27** no PC.
 
@@ -6,21 +6,21 @@ O sistema integra extração de dados atualizados do SoFIFA, validação de regr
 
 ---
 
-## ✨ Principais Funcionalidades
+## Principais Funcionalidades
 
-* **🕷️ Scraper SoFIFA Resiliente (Fase 1):** Extração automatizada de clubes, ligas e atletas com suporte a paginação, normalização monetária/posicional (PT-BR e EN), armazenamento em SQLite (`data/draftfc_local.db`) e contorno de bloqueios Cloudflare (`curl_cffi` + fallback via navegador nativo).
-* **⚖️ Motor de Regras & Snake Draft (Fases 2 e 3):** Geração da ordem *Snake* (`1 → N` nas rodadas ímpares, `N → 1` nas rodadas pares), travas configuráveis (limite de jogadores por clube, liga ou nacionalidade) e fila de prioridades (*Queue*) por participante.
-* **🌐 Arena Multiplayer em Tempo Real (Fases 4 e 6):**
+* **Scraper SoFIFA Resiliente (Fase 1):** Extração automatizada de clubes, ligas e atletas com suporte a paginação, normalização monetária/posicional (PT-BR e EN), armazenamento em SQLite (`data/draftfc_local.db`) e contorno de bloqueios Cloudflare (`curl_cffi` + fallback via navegador nativo).
+* **Motor de Regras & Snake Draft (Fases 2 e 3):** Geração da ordem *Snake* (`1 → N` nas rodadas ímpares, `N → 1` nas rodadas pares), travas configuráveis (limite de jogadores por clube, liga ou nacionalidade) e fila de prioridades (*Queue*) por participante.
+* **Arena Multiplayer em Tempo Real (Fases 4 e 6):**
   * Criação e listagem de salas ativas com proteção por senha.
   * Sincronização instantânea via **WebSockets nativos do FastAPI**.
   * Reconexão inteligente: se um participante fechar o navegador ou cair da rede, basta entrar novamente com o **mesmo nome de Time/Manager** para recuperar o assento e o elenco.
   * **Draft Board Estilo Sleeper:** Matriz 2D interativa colorida por posição (`GK` Goleiro, `DEF` Defesa, `MID` Meio-Campo e `ATT` Ataque).
-  * **Poderes de Comissário (`👑`):** Sorteio aleatório da ordem do draft (`🎲`), desfazer última escolha (`↩`), escolher atletas em nome de outros managers e exportação imediata do histórico em `.csv`.
-* **🎮 Exportador Direto para o EA FC no PC (Fase 5):** Patcher automatizado para tabelas do **RDBM** (`teamplayerlinks.txt`, `default_teamsheets.txt`, `leagueteamlinks.txt` e `playerloans.txt`) com *backfill* automático nos clubes de origem, preservação de seleções nacionais e remoção de travas de empréstimo.
+  * **Poderes de Comissário:** Sorteio aleatório da ordem do draft (`🎲`), desfazer última escolha (`↩`), escolher atletas em nome de outros managers e exportação imediata do histórico em `.csv`.
+* **Exportador Direto para o EA FC no PC (Fase 5):** Patcher automatizado para tabelas do **RDBM** (`teamplayerlinks.txt`, `default_teamsheets.txt`, `leagueteamlinks.txt` e `playerloans.txt`) com *backfill* automático nos clubes de origem, preservação de seleções nacionais e remoção de travas de empréstimo.
 
 ---
 
-## 🛠️ Pré-requisitos
+## Pré-requisitos
 
 * **Python 3.11+**
 * **Node.js 18+ (LTS)** e `npm`
@@ -28,7 +28,7 @@ O sistema integra extração de dados atualizados do SoFIFA, validação de regr
 
 ---
 
-## 🚀 Instalação e Configuração Rápida
+## Instalação e Configuração Rápida
 
 ### 1. Clonar o repositório e preparar o ambiente Python (Backend)
 
@@ -52,7 +52,7 @@ npm install
 
 ---
 
-## 🏆 Como Rodar no Dia do Campeonato
+## Como Rodar no Dia do Campeonato
 
 Para permitir que todos os participantes entrem na sala pelo próprio celular ou notebook conectados na mesma rede Wi-Fi (ou via `localhost`), mantenha **dois terminais abertos**:
 
@@ -77,7 +77,7 @@ npm run dev -- --host
 
 ---
 
-## 👑 Guia de Operação do Comissário durante o Draft
+## Guia de Operação do Comissário durante o Draft
 
 1. **Criar a Sala:** Na tela inicial (`http://localhost:5173`), preencha o nome da liga, a quantidade de participantes, o número de rodadas e o limite de jogadores por clube, e clique em **Criar Sala Multiplayer & Abrir Lobby**.
 2. **Entrada dos Managers:** Compartilhe o **Código da Sala** (6 caracteres no topo da tela). Cada participante entra informando seu nome.
@@ -90,7 +90,7 @@ npm run dev -- --host
 
 ---
 
-## 📦 Banco de Dados de Jogadores (Scraper SoFIFA)
+## Banco de Dados de Jogadores (Scraper SoFIFA)
 
 Caso precise atualizar ou expandir a base de jogadores em `data/draftfc_local.db`:
 
@@ -110,7 +110,7 @@ python -c "import sqlite3; c=sqlite3.connect('data/draftfc_local.db'); [c.execut
 
 ---
 
-## 🎮 Exportação e Injeção dos Elencos no EA Sports FC 26 (PC)
+## Exportação e Injeção dos Elencos no EA Sports FC 26 (PC)
 
 1. **Backup e Extração no RDBM:**
    * Copie seu arquivo `Squads...` original de `%LOCALAPPDATA%\EA SPORTS FC 26\settings` para `data/backup_squads`.
@@ -130,7 +130,7 @@ python -c "import sqlite3; c=sqlite3.connect('data/draftfc_local.db'); [c.execut
 
 ---
 
-## 🧪 Suíte de Testes Automatizados
+## Suíte de Testes Automatizados
 
 Para rodar todos os testes de unidade e integração (Scraper, Motor de Regras, Auto-Draft, API Local, Exportador RDBM e Concorrência/WebSockets):
 
