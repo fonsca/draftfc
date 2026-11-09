@@ -344,6 +344,59 @@ class DraftRoom:
         await self.broadcast(payload)
         return True, payload
 
+    async def step_clock(self, seconds: int = 1) -> dict[str, Any]:
+        """
+        Avança o relógio da sala em `seconds` segundos.
+        Se remaining_seconds atingir 0, aciona o Auto-Draft para o assento atual
+        e reseta o relógio para config.pick_clock_seconds.
+        """
+        events_to_broadcast: list[dict[str, Any]] = []
+        async with self.lock:
+            if self.status != "active" or self.current_slot is None:
+                return {"status": self.status, "remaining_seconds": self.remaining_seconds}
+
+            self.remaining_seconds = max(0, self.remaining_seconds - seconds)
+            slot = self.current_slot
+            tick_event = {
+                "event": "clock_tick",
+                "room_code": self.room_code,
+                "overall_pick": slot[0],
+                "round_number": slot[1],
+                "active_seat": slot[3],
+                "remaining_seconds": self.remaining_seconds,
+            }
+            events_to_broadcast.append(tick_event)
+
+            if self.remaining_seconds == 0:
+                overall_pick, rnd, pick_in_rnd, active_seat = slot
+                candidate, source = self._select_autodraft_candidate_unlocked(active_seat)
+                record = self._commit_pick_unlocked(
+                    overall_pick=overall_pick,
+                    rnd=rnd,
+                    pick_in_rnd=pick_in_rnd,
+                    seat_number=active_seat,
+                    player=candidate,
+                    source=source,
+                )
+                next_slot = self.current_slot
+                events_to_broadcast.append(
+                    {
+                        "event": "player_drafted",
+                        "room_code": self.room_code,
+                        "pick": record.model_dump(),
+                        "remaining_seconds": self.remaining_seconds,
+                        "next_overall_pick": next_slot[0] if next_slot else None,
+                        "next_round": next_slot[1] if next_slot else None,
+                        "next_seat": next_slot[3] if next_slot else None,
+                        "status": self.status,
+                    }
+                )
+
+        for ev in events_to_broadcast:
+            await self.broadcast(ev)
+
+        return events_to_broadcast[-1]    
+
     async def toggle_pause(self, commissioner_token: str) -> tuple[bool, dict[str, Any]]:
         """
         Poder de Comissário: pausa ou retoma a contagem regressiva do relógio.
@@ -820,15 +873,35 @@ class MultiplayerRoomManager:
             raise KeyError(f"Sala {room_code} não encontrada.")
         return room
 
-    async def delete_room(self, room_code: str) -> None:
-        code = room_code.upper()
-        room = self.rooms.pop(code, None)
-        if room is None:
-            raise KeyError(f"Sala {room_code} não encontrada.")
-        room.status = "completed"
+    async def delete_room(
+        self,
+        room_code: str,
+        commissioner_token: str | None = None,
+        password: str | None = None,
+        force: bool = False,
+    ) -> bool:
+        room = self.get_room(room_code)
+
+        if not force:
+            is_comm = bool(commissioner_token and room._is_commissioner(commissioner_token))
+            pwd_ok = bool(password and room.verify_password(password))
+            if not is_comm and not pwd_ok:
+                raise PermissionError("Permissão negada para excluir a sala.")
+
+        # Cancela tarefa de relógio em background se estiver ativa
         if room.clock_task and not room.clock_task.done():
             room.clock_task.cancel()
-        await room.broadcast({"event": "room_deleted", "room_code": code})
+
+        # Notifica clientes conectados antes de fechar
+        await room.broadcast({"event": "room_deleted", "room_code": room.room_code})
+        for ws in list(room.connections.keys()):
+            try:
+                await ws.close(code=1000)
+            except Exception:
+                pass
+
+        self.rooms.pop(room.room_code, None)
+        return True
 
     def join_room(self, room_code: str, req: JoinRoomRequest) -> tuple[DraftRoom, int, str]:
         room = self.get_room(room_code)
